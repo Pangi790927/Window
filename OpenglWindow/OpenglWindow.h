@@ -5,21 +5,20 @@
 	Options:
 			- options are per window
 		perspective -> t/f, sets perspective
+		msaa -> MSAA
 		closed -> t/f, sets if window is closed
 		vSync -> t/f, sets if vSync is enabled
 		width -> width of the window
 		height -> height of the window
 
 	WindowType Functions:
+		requestClose();		// ask the window to close
 		setVSync();			// sets vsinc using option
-		reSizeGLScene();	// resizes viewPort
+		resize();			// resizes viewPort
 		focus();			// ready window for drawing
-		unfocus();			// remove window for drawing
 		swapBuffers();		// swap the drawing buffers
-		handleInput();		// remembers input pressed
-		getFocusedWindow();	// static function that tels
-							// us which window is in focus
-							// returns value of type NameType
+		handleInput();		// remembers input pressed,
+							// returns true if event occured
 */
 
 #include "Options.h"
@@ -35,14 +34,14 @@ public:
 	EventMemory *eventMemory;
 	Options options;
 
-	WindowCore (int width, int height, Options options = Options(),
+	WindowCore (int width, int height, std::string name = "name",
+			Options options = Options(),
 			EventMemory *eventMemory = new EventMemory())
 	: options(options),
 		options["width"](width),
 		options["height"](height),		
 		eventMemory(eventMemory),
-		RawWindow(options["perspective"], options[width], options["height"],
-			eventMemory)
+		RawWindow(options["width"], options["height"], name, options["msaa"])
 	{
 		options["closed"] = false;
 		setVSync(options["vSync"]);
@@ -55,7 +54,6 @@ public:
 		focus();
 		core->draw();
 		swapBuffers();
-		unfocus();
 	}
 
 	int& operator [] (std::string name) {
@@ -117,21 +115,17 @@ public:
 			windows.end();
 		);
 
-		// handle input for in-focus window
-		WindowCore *currentPtr = windows[RawWindow::getFocusedWindow()];
-		if (currentPtr) {
-			auto& currentWindow = *currentPtr;
-			if (currentWindow->handleInput() == false) {
-				currentWindow["closed"] = true;
-			}
-			else {
-				currentWindow->event();
-			}
-		}
-
 		// iterate through windows
 		for (auto&& windowDesc : windows) {
 			auto &window = *windowDesc.second;
+			if (window->hasEvent()) { 
+				if (currentWindow->handleInput() == false)
+					// will update next time
+					currentWindow["closed"] = true;
+				else
+					currentWindow->event();
+			}
+
 			window->postDraw();
 			window->draw();
 		}

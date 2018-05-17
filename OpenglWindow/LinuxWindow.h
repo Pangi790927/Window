@@ -1,99 +1,85 @@
-#ifndef OPENGLWINDOW_H_INCLUDED
-#define OPENGLWINDOW_H_INCLUDED 
+#ifndef LINUX_WINDOW_H
+#define LINUX_WINDOW_H
 
-#include <X11/X.h>
-#include <X11/Xlib.h>
-#include <X11/Xatom.h>
-// #include <X11/extensions/Xrandr.h>
-
-/// Opengl 
-#include <GL/glx.h>
-
-#include <GL/gl.h>
-#include <GL/glu.h>
+#include "Keyboard.h"
+#include "Mouse.h"
 
 #include <cstring>
+#include <GL/glx.h>
+#include <X11/Xlib.h>
+#include <X11/XKBlib.h>
 
-#include "ErrorLogs.h"
-
-#include "Util.h"
-
-#include "Mouse.h"
-#include "Keyboard.h"
-#include "MathLib.h"
-
-class OpenGLWindow {
-private: 
-	Display *display; 
-	Window rootWindow; 
+// 2 x TO_DO
+class LinuxWindow {
+public:
+	Display *display;
+	Window parrentWindow; 
 	Window window;
 
 	Colormap colormap; 
 	XVisualInfo *visualInfo;
 	XSetWindowAttributes windowAttributes;
 	GLXContext glContext;
-
-	XEvent event;
-	XWindowAttributes eventWindowAttributes;
 	Atom wm_delete_window;
 
-public:
-	Mouse mouse; 
-	Keyboard keyboard; 
+	Mouse mouse;
+	Keyboard<> keyboard;
 
-	int width = 600; 
-	int height = 600; 
+	int width;
+	int height;
+	
+	int x = 0;
+	int y = 0;
 
-	Point2i windowPosition;
+	std::string name;
 
-	std::string name; 
-
-	bool windowClosed = false; 
-	bool hasToClose = false;
-
+	bool active = false;
+	bool closePending = false;
 	bool cursorHidden = false;
+	bool focusIn;
 
-	int MSAA;
+	int msaa;
 
-	OpenGLWindow (bool windowVisible, int width = 600, int height = 600, std::string name = "123", int MSAA = 8) 
-			: window(window), height(height), name(name), MSAA(MSAA)
+	LinuxWindow (int width, int height,
+			std::string name = "name", int msaa = 8, Window parrent = -1)
+	: width(width), height(height), name(name), msaa(msaa)
 	{
-		init(windowVisible);
-	}
-
-	void init (bool windowVisible) {
-		openDispplay(); 
-		getParentWindow();
-		setWindowSettings();
+		connectDisplay();
+		setParrent(parrent);
+		setVisuals();
 		createColorMap();
-		setWindowAttributes();
-		creteWindow(); 
+		createWindow();
 		changeName(name);
 		createContext();
-		setProtocols();
+		setCloseProtocol();
+		initKeyboard();
 
-		if (windowVisible) 
-			showWindow();
+		mapWindow();
+		active = true;
 	}
 
-	bool openDispplay (std::string name = "") {
-		display = XOpenDisplay(name == "" ? NULL : name.c_str());
+	LinuxWindow (const LinuxWindow& other) = delete;
+	LinuxWindow (const LinuxWindow&& other) = delete;
+	LinuxWindow& operator = (const LinuxWindow& other) = delete;
+	LinuxWindow& operator = (const LinuxWindow&& other) = delete;
 
-		if (display == NULL) {
-			ERROR_PRINT("Can't connect to X server", 0, 0);
-			return false; 
+	void connectDisplay() {
+		if ((display = XOpenDisplay(NULL)) == NULL)
+			throw std::runtime_error("Can't connect to X server");
+	}
+
+	void setParrent (Window parrent) {
+		if (parrent != -1) {
+			parrentWindow = parrent;
 		}
-		return true; 
+		else {
+			parrentWindow = DefaultRootWindow(display);
+		}
 	}
 
-	void getParentWindow() {
-		rootWindow = DefaultRootWindow(display);
-	}
-
-	bool setWindowSettings() {
-		GLint atributes[] = { GLX_RGBA, GLX_DEPTH_SIZE, 24, GLX_DOUBLEBUFFER, None }; // make more generic
-
-		static const int Visual_attribs[] =
+	void setVisuals() {
+		// should be checked, I couldn't find the right manual for glx
+		static const int visualAttr[] =
 		{
 			GLX_X_RENDERABLE    , True,
 			GLX_DRAWABLE_TYPE   , GLX_WINDOW_BIT,
@@ -106,81 +92,53 @@ public:
 			GLX_DEPTH_SIZE      , 24,
 			GLX_STENCIL_SIZE    , 8,
 			GLX_DOUBLEBUFFER    , True,
-			GLX_SAMPLE_BUFFERS  , MSAA > 0,            // <-- MSAA
-			GLX_SAMPLES         , MSAA,            // <-- MSAA 
+			GLX_SAMPLE_BUFFERS  , msaa > 0,			// <-- MSAA
+			GLX_SAMPLES         , msaa,				// <-- MSAA 
 			None					
 		};
 
-		int attribs [ 100 ] ;
-		memcpy( attribs, Visual_attribs, sizeof( Visual_attribs ) );
+		int attribs[100];
+		memcpy(attribs, visualAttr, sizeof(visualAttr));
 
 		GLXFBConfig fbconfig = 0;
-		int         fbcount;
+		int fbcount;
 
-		GLXFBConfig *fbc = glXChooseFBConfig( display, 0/*screen */, attribs, &fbcount );
-		if ( fbc )
-		{
-			if ( fbcount >= 1 )
+		GLXFBConfig *fbc = glXChooseFBConfig(display,
+				0/*screen */, attribs, &fbcount);
+
+		if (fbc) {
+			if (fbcount >= 1)
 				fbconfig = fbc[0];
-			XFree( fbc );
+			XFree(fbc);
 		}
 
-		if ( !fbconfig ) {
-			ERROR_PRINT("Failed to get MSAA GLXFBConfig", 0, 0); 
-			return false; 
-		}
+		if (!fbconfig)
+			throw std::runtime_error("Failed to get MSAA GLXFBConfig");
 
-		// --- Get its VisualInfo ---
-		visualInfo = glXGetVisualFromFBConfig( display, fbconfig );
-
-		if (visualInfo == NULL) {
-			ERROR_PRINT("no visual chosen", 0, 0); 
-			return false; 
-		}
-		return true;
+		if ((visualInfo = glXGetVisualFromFBConfig(display, fbconfig)) == NULL)
+			throw std::runtime_error("No visual chosen");
 	}
 
 	void createColorMap() {
-		colormap = XCreateColormap(display, rootWindow, visualInfo->visual, AllocNone);
+		colormap = XCreateColormap(display, parrentWindow,
+				visualInfo->visual, AllocNone);
 	}
 
-	// https://tronche.com/gui/x/xlib/events/mask.html
-	void setWindowAttributes() {
-		windowAttributes.colormap = colormap; 
-		windowAttributes.event_mask = ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask | 
-										ButtonReleaseMask | PointerMotionMask;
-	}
-
-	void setProtocols() { // ICCCM Client to Window Manager Comunication (X Button)
+	void setCloseProtocol() {
 		wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
 		Atom protocols[] = {wm_delete_window};
 		XSetWMProtocols(display, window, protocols, 1);
 	}
 
-	// void makeFullscreen() {
-	// 	Atom atoms[2] = { XInternAtom(display, "_NET_WM_STATE_FULLSCREEN", False), None };
-	// 	XChangeProperty(
-	// 		display, 
-	// 		window, 
-	// 		XInternAtom(display, "_NET_WM_STATE", False),
-	// 		XA_ATOM, 32, PropModeReplace, (unsigned char*)atoms, 1
-	// 	);
-	// }
+	void createWindow() {
+		windowAttributes.colormap = colormap; 
+		windowAttributes.event_mask =
+				ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask |
+				ButtonReleaseMask | PointerMotionMask | FocusChangeMask;
 
-	// void makeWindowed() {
-	// 	Atom atoms[2] = { XInternAtom(display, "_NET_WM_STATE_WINDOWED", False), None };
-	// 	XChangeProperty(
-	// 		display, 
-	// 		window, 
-	// 		XInternAtom(display, "_NET_WM_STATE", False),
-	// 		XA_ATOM, 32, PropModeReplace, (unsigned char*)atoms, 1
-	// 	);
-	// }
-
-	void creteWindow() {
 		window = XCreateWindow(
 			display, 
-			rootWindow, 
+			parrentWindow, 
 			0, 
 			0, 
 			width, 
@@ -194,10 +152,6 @@ public:
 		);
 	}
 
-	void showWindow() {
-		XMapWindow(display, window);
-	}
-
 	void changeName (std::string name) {
 		this->name = name; 
 		XStoreName(display, window, name.c_str());
@@ -209,33 +163,39 @@ public:
 	}
 
 	void setWindowPosition() {
-		int x, y;
+		int oldX, oldY;
 		Window child;
 		XWindowAttributes xwa;
-		XTranslateCoordinates( display, window, rootWindow, 0, 0, &x, &y, &child );
-		XGetWindowAttributes( display, window, &xwa );
+		XTranslateCoordinates(display, window, parrentWindow,
+				0, 0, &x, &y, &child);
+		XGetWindowAttributes(display, window, &xwa);
 		
-		windowPosition.x = x - xwa.x; 
-		windowPosition.y = y - xwa.y; 
+		x = oldX - xwa.x;
+		y = oldY - xwa.y;
 	}
 
-	void moveMouseTo (int x, int y) {
+	void mapWindow() {
+		XMapWindow(display, window);
+	}
+
+	void moveMouseTo (int dx, int dy) {
 		setWindowPosition();
-		XSelectInput(display, rootWindow, KeyReleaseMask); 
-		XWarpPointer(display, None, rootWindow, 0, 0, 0, 0, windowPosition.x + x, windowPosition.y + y); 
+		XSelectInput(display, parrentWindow, KeyReleaseMask); 
+		XWarpPointer(display, None, parrentWindow, 0, 0, 0, 0, x + dx, y + dy);
 		XFlush(display);
 	}
 
 	void hideCursor() {
-		if (!isCursorHidden()) {
+		if (!cursorHidden) {
 			XColor dummy;
 			const char data = 0;
 
 			Pixmap blank = XCreateBitmapFromData (display, window, &data, 1, 1);
-			if (blank == None) 
-				ERROR_PRINT("Out of Memory", 0, 0);
+			if (blank == None)
+				std::cout << "out of memory" << std::endl;
 			
-			Cursor cursor = XCreatePixmapCursor(display, blank, blank, &dummy, &dummy, 0, 0);
+			Cursor cursor = XCreatePixmapCursor(display, blank, blank,
+					&dummy, &dummy, 0, 0);
 			XFreePixmap (display, blank);
 
 			cursorHidden = true;
@@ -244,80 +204,182 @@ public:
 	}
 
 	void showCursor() {
-		if (isCursorHidden()) {
+		if (cursorHidden) {
 			cursorHidden = false; 
 			XUndefineCursor(display, window);
 		}
 	}
 
-	bool isCursorHidden() {
-		return cursorHidden; 
+	void close() {
+		if (!active)
+			return;
+		glXMakeCurrent(display, None, NULL);
+		glXDestroyContext(display, glContext);
+		XDestroyWindow(display, window);
+		XCloseDisplay(display);
+
+		active = false; 
 	}
 
-	template <class Type>
-	void handleEventsAndDrawing(Type &drawObject) {
-		bool needDrawing = false;
-		while (!isWindowClosed() && XPending(display)) {
+	void updateKeyboard (const XEvent& event) {
+		KeySym code = XkbKeycodeToKeysym(display, event.xkey.keycode, 0,
+				event.xkey.state & ShiftMask ? 1 : 0);
+		keyboard.registerEvent(code, event.type == KeyPress);
+	}
+
+	void updateMouse (const XEvent& event) {
+		if (event.type == ButtonPress) {
+			if (event.xbutton.button == Button1)
+				mouse.lmb = true;
+			if (event.xbutton.button == Button2)
+				mouse.mmb = true;
+			if (event.xbutton.button == Button3)
+				mouse.rmb = true;
+		}
+		else if (event.type == ButtonRelease) {
+			if (event.xbutton.button == Button1)
+				mouse.lmb = false;
+			if (event.xbutton.button == Button2)
+				mouse.mmb = false;
+			if (event.xbutton.button == Button3)
+				mouse.rmb = false;
+		}
+		else if (event.type == MotionNotify) {
+			mouse.updateXY(event.xmotion.x, event.xmotion.y);
+		}
+	}
+
+	void focus() {
+		if (!active)
+			return;
+		glXMakeCurrent(display, window, glContext);
+	}
+
+	void resize() {
+		if (!active)
+			return;
+		// TO DO
+	}
+
+	void setVSync (bool sync) {
+		if (!active)
+			return;
+		// TO DO; nothing, really 
+	}
+
+	void swapBuffers() {
+		if (!active)
+			return;
+		glXSwapBuffers(display, window);
+	}
+
+	void requestClose() {
+		closePending = true;
+	}
+
+	bool handleInput() {
+		bool needRedraw = false;
+		bool hadEvent = false;
+		XWindowAttributes eventWindowAttributes;
+		XEvent event;
+
+		if (!active)
+			return false;
+		while (active && XPending(display)) {
 			XNextEvent(display, &event);
 
+			hadEvent = true;
 			if (event.type == Expose) {
-				XGetWindowAttributes(display, window, &eventWindowAttributes);
-				needDrawing = true; 
+				XGetWindowAttributes (display, window, &eventWindowAttributes);
+				needRedraw = true; 
 			}
 			else if (Util::isEqualToAny(event.type, {KeyPress, KeyRelease})) {
-				keyboard.handleEvent(event);
+				updateKeyboard(event);
 			}
-			else if (Util::isEqualToAny(event.type, {MotionNotify, ButtonPress, ButtonRelease})) {
-				mouse.handleEvent(event);
+			else if (Util::isEqualToAny(event.type,
+					{MotionNotify, ButtonPress, ButtonRelease}))
+			{
+				updateMouse(event);
+			}
+			else if (Util::isEqualToAny(event.type, {FocusIn, FocusOut})) {
+				if (event.type == FocusIn)
+					focusIn = true;
+				if (event.type == FocusOut)
+					focusIn = false;
 			}
 			else if (ClientMessage && event.xclient.data.l[0] == wm_delete_window) {
 				close();
 			}
-			else {
-				/// --- nothing 
-			}
 		}
 
-		if (!isWindowClosed()) {
-			if (needDrawing) {
+		if (active) {
+			if (needRedraw) {
 				width = eventWindowAttributes.width; 
 				height = eventWindowAttributes.height;
 
 				setWindowPosition();
-
-				drawObject.onRescale(); 
+				resize();
 			}
-			
-			drawObject.mainLoop();
-			glXSwapBuffers(display, window);
 		}
 
-		if (hasToClose) {
+		if (closePending) {
 			close();
 		}
+
+		return hadEvent;
 	}
 
-	template <class Type>
-	void startMainLoop(Type &drawObject) {
-		while (!isWindowClosed())
-			handleEventsAndDrawing(drawObject); 
+	void initKeyboard() {
+		std::map<std::string, int> mapping;
+
+		mapping["ENTER"] = XK_Return;
+		mapping["SPACE"] = XK_space;
+		mapping["CAPS_LOCK"] = XK_Caps_Lock;
+		mapping["TAB"] = XK_Tab;
+		mapping["L_ALT"] = XK_Alt_L;
+		mapping["R_ALT"] = XK_Alt_R;
+		mapping["L_CTRL"] = XK_Control_L;
+		mapping["R_CTRL"] = XK_Control_R;
+		mapping["L_SHIFT"] = XK_Shift_L;
+		mapping["R_SHIFT"] = XK_Shift_R;
+		mapping["ARROW_UP"] = XK_Up;
+		mapping["ARROW_DOWN"] = XK_Down;
+		mapping["ARROW_LEFT"] = XK_Left;
+		mapping["ARROW_RIGHT"] = XK_Right;
+		mapping["F1"] = XK_F1;
+		mapping["F2"] = XK_F2;
+		mapping["F3"] = XK_F3;
+		mapping["F4"] = XK_F4;
+		mapping["F5"] = XK_F5;
+		mapping["F6"] = XK_F6;
+		mapping["F7"] = XK_F7;
+		mapping["F8"] = XK_F8;
+		mapping["F9"] = XK_F9;
+		mapping["F10"] = XK_F10;
+		mapping["F11"] = XK_F11;
+		mapping["F12"] = XK_F12;
+		mapping["BACKSPACE"] = XK_BackSpace;
+		mapping["INSERT"] = XK_Insert;
+		mapping["DELETE"] = XK_Delete;
+		mapping["HOME"] = XK_Home;
+		mapping["PAGE_UP"] = XK_Page_Up;
+		mapping["PAGE_DOWN"] = XK_Page_Down;
+		mapping["END"] = XK_End;
+		mapping["PRINT_SCREEN"] = XK_Print;
+		mapping["SCREEN_LOCK"] = XK_Scroll_Lock;
+		mapping["PAUSE"] = XK_Pause;
+		mapping["NUM_LOCK"] = XK_Num_Lock;
+		mapping["NUM_ENTER"] = XK_KP_Enter;
+		mapping["NUM_INSERT"] = XK_KP_Insert;
+		mapping["WINKEY"] = XK_Super_L;
+		mapping["FN"] = 0;
+		mapping["ESC"] = XK_Escape;
+
+		keyboard.mapKeys(mapping);
 	}
 
-	void closeAnounce() {
-		hasToClose = true; 
-	}
-
-	void close() {
-		glXMakeCurrent(display, None, NULL);
-        glXDestroyContext(display, glContext);
-        XDestroyWindow(display, window);
-        XCloseDisplay(display);
-
-        windowClosed = true; 
-	}
-
-	bool isWindowClosed() {
-		return windowClosed; 
+	~LinuxWindow() {
+		close();
 	}
 };
 
