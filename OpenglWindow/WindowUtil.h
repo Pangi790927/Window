@@ -1,5 +1,5 @@
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef WINDOW_UTIL_H
+#define WINDOW_UTIL_H
 
 namespace Util
 {

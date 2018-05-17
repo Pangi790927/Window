@@ -1,6 +1,12 @@
 #ifndef WINDOWS_WINDOW_H
 #define WINDOWS_WINDOW_H
 
+#include "Keyboard.h"
+#include "Mouse.h"
+#include <GL/gl.h>
+#include <GL/glu.h>
+#include <windows.h>
+#include <windowsx.h>
 
 class WindowsWindow {
 public:
@@ -32,7 +38,7 @@ public:
 	int msaa;	// not used inside the windows window
 
 	WindowsWindow (int width, int height, std::string name,
-			int msaa = 8, HWND parrent)
+			int msaa = 8, HWND parrent = 0)
 	: width(width), height(height), name(name), msaa(msaa)
 	{
 		getHInstance();
@@ -41,6 +47,9 @@ public:
 		registerWindowEvent();
 		showWindow();
 		initOpengl();
+		initKeyboard();
+
+		active = true;
 	}
 
 	WindowsWindow (const WindowsWindow& other) = delete;
@@ -48,7 +57,7 @@ public:
 	WindowsWindow& operator = (const WindowsWindow& other) = delete;
 	WindowsWindow& operator = (const WindowsWindow&& other) = delete;
 
-	static std::map<HWND, WindowsWindow> eventMap;
+	static std::map<HWND, WindowsWindow *> eventMap;
 	static LRESULT CALLBACK globalEventProc (HWND hwnd, UINT uMsg,
 			WPARAM wParam, LPARAM lParam)
 	{
@@ -59,38 +68,57 @@ public:
 				return ptr->eventProc(hwnd, uMsg, wParam, lParam);
 			}
 			else
-				return DefWindowProc(hwnd, msg, wParam, lParam);
+				return DefWindowProc(hwnd, uMsg, wParam, lParam);
 		}
 		else
-			return DefWindowProc(hwnd, msg, wParam, lParam);
+			return DefWindowProc(hwnd, uMsg, wParam, lParam);
 	}
 
 	LRESULT CALLBACK eventProc (HWND hwnd, UINT uMsg,
 			WPARAM wParam, LPARAM lParam)
 	{
+		uint8_t kbs[256];
+		WORD code[2];
 		switch (uMsg) {
 			case WM_CLOSE: closePending = true; break;
-			case WM_DESTROY: return 0; break;
+			case WM_DESTROY: closePending = true; break;
 			
-			case WM_KEYDOWN: keyboard.registerEvent(wParam, false); break;
-			case WM_KEYUP: keyboard.registerEvent(wParam, true); break;
-			
+			case WM_KEYDOWN:
+					GetKeyboardState(kbs);
+					if (ToAscii(wParam, MapVirtualKey(wParam,
+							MAPVK_VK_TO_VSC), kbs, code, 0) <= 0)
+						keyboard.registerEvent(wParam + 256, true);
+					else
+						keyboard.registerEvent(code[0] +
+								(256 + wParam) * bool(!code[0]), true);
+				break;
+			case WM_KEYUP:
+					GetKeyboardState(kbs);
+					if (ToAscii(wParam, MapVirtualKey(wParam,
+							MAPVK_VK_TO_VSC), kbs, code, 0) <= 0)
+						keyboard.registerEvent(wParam + 256, false);
+					else
+						keyboard.registerEvent(code[0] +
+								(256 + wParam) * bool(!code[0]), false);
+				break;
+
 			case WM_MOUSEMOVE: mouse.updateXY(GET_X_LPARAM(lParam),
 					GET_Y_LPARAM(lParam)); break;
 			case WM_MOUSEWHEEL: mouse.updateMmbPos(
 					GET_WHEEL_DELTA_WPARAM(wParam)); break;
 			
-			case WM_LBUTTONDOWN: Mouse.lmb = true; break;
-            case WM_MBUTTONDOWN: Mouse.mmb = true; break;
-            case WM_RBUTTONDOWN: Mouse.rmb = true; break;
-            case WM_LBUTTONUP: Mouse.lmb = false; break;
-            case WM_MBUTTONUP: Mouse.mmb = false; break;
-            case WM_RBUTTONUP: Mouse.rmb = false; break;
+			case WM_LBUTTONDOWN: mouse.updateLmb(true); break;
+            case WM_MBUTTONDOWN: mouse.updateMmb(true); break;
+            case WM_RBUTTONDOWN: mouse.updateRmb(true); break;
+            case WM_LBUTTONUP: mouse.updateLmb(false); break;
+            case WM_MBUTTONUP: mouse.updateMmb(false); break;
+            case WM_RBUTTONUP: mouse.updateRmb(false); break;
 
             case WM_SIZE: needRedraw = true; break;
 
-            default: return DefWindowProc(hwnd, msg, wParam, lParam);
+            default: return DefWindowProc(hwnd, uMsg, wParam, lParam);
 		}
+		return 0;
 	}
 
 	void getHInstance() {
@@ -99,17 +127,17 @@ public:
 
 	void registerClass () {
 		wcex.cbSize = sizeof(WNDCLASSEX);
-		wcex.style = CS_HREDRAW | CS_VREDRAW;
+		wcex.style = CS_HREDRAW | CS_VREDRAW | CS_OWNDC;
 		wcex.lpfnWndProc = &WindowsWindow::globalEventProc;
 		wcex.cbClsExtra = 0;
 		wcex.cbWndExtra = 0;
 		wcex.hInstance = hInstance;
-		wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_APPLICATION));
+		wcex.hIcon = LoadIcon(NULL, IDI_APPLICATION);
 		wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-		wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+		wcex.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
 		wcex.lpszMenuName = NULL;
 		wcex.lpszClassName = name.c_str();
-		wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_APPLICATION));
+		wcex.hIconSm = LoadIcon(NULL, IDI_APPLICATION);
 
 		if (!RegisterClassEx(&wcex))
 			throw std::runtime_error("Couldn't register window class");
@@ -124,12 +152,12 @@ public:
 			name.c_str(),
 			name.c_str(),
 			dwStyle,
-			WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT,
+			CW_USEDEFAULT,
+			CW_USEDEFAULT,
 			width,
 			height,
-			NULL,
 			parrent,
+			NULL,
 			hInstance,
 			NULL
 		);
@@ -142,12 +170,12 @@ public:
 		eventMap[window] = this;	
 	}
 
-	void initOpengl (int colorDepth = 32, int depthBuffer = 32,
-			int stencilBuffer = 32)
+	void initOpengl (uint8_t colorDepth = 32, uint8_t depthBuffer = 32,
+			uint8_t stencilBuffer = 32)
 	{
 		PIXELFORMATDESCRIPTOR pfd;
 		GLuint PixelFormat;
-		int flags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+		DWORD flags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
 
 		pfd = {
 			sizeof(PIXELFORMATDESCRIPTOR),
@@ -193,14 +221,22 @@ public:
 	void resize() {
 		if (!active)
 			return;
+		if (closePending) {
+			close();
+			return;
+		}
 		// TO DO;
 	}
 
 	void focus() {
 		if (!active)
 			return;
+		if (closePending) {
+			close();
+			return;
+		}
 		if (!wglMakeCurrent(hDC, hRC))
-			throw std::runtime_error("Can't acivate the rendering context!");
+			throw std::runtime_error("Can't focus rendering context!");
 	}
 
 	void setVSync (bool sync) {
@@ -224,7 +260,11 @@ public:
 	void swapBuffers() {
 		if (!active)
 			return;
-		// TO DO;
+		if (closePending) {
+			close();
+			return;
+		}
+		SwapBuffers(hDC);
 	}
 
 	void requestClose() {
@@ -237,7 +277,7 @@ public:
 
 		if (!active)
 			return false;
-		while (GetMessage(&msg, NULL, 0, 0)) {
+		while (PeekMessage(&msg, window, 0, 0, PM_REMOVE)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 			hadEvent = true;
@@ -246,15 +286,16 @@ public:
 		if (needRedraw) {
 			RECT rect;
 
-			if( GetClientRect(window, &rect)) {
-				Width = rect.right - rect.left;
-				Height = rect.bottom - rect.top;
+			if (GetClientRect(window, &rect)) {
+				width = rect.right - rect.left;
+				height = rect.bottom - rect.top;
 				resize();
 			}
 		}
 
-		if (closePending)
+		if (closePending) {
 			close();
+		}
 
 		return hadEvent; 
 	}
@@ -269,6 +310,57 @@ public:
 		ReleaseDC(window, hDC);
 		DestroyWindow(window);
 		unregisterWindowEvent();
+
+		active = false;
+	}
+
+	void initKeyboard() {
+		std::map<std::string, int> mapping;
+
+		mapping["ENTER"] = VK_RETURN;
+		mapping["SPACE"] = VK_SPACE;
+		mapping["CAPS_LOCK"] = VK_CAPITAL + 256;
+		mapping["TAB"] = VK_TAB;
+		// mapping["L_ALT"] = VK_MENU + 256; // not working?
+		// mapping["R_ALT"] = VK_MENU + 256; // not working?
+		mapping["L_CTRL"] = VK_CONTROL + 256;
+		mapping["R_CTRL"] = VK_CONTROL + 256;
+		mapping["L_SHIFT"] = VK_SHIFT + 256;
+		mapping["R_SHIFT"] = VK_SHIFT + 256;
+		mapping["ARROW_UP"] = VK_UP + 256;
+		mapping["ARROW_DOWN"] = VK_DOWN + 256;
+		mapping["ARROW_LEFT"] = VK_LEFT + 256;
+		mapping["ARROW_RIGHT"] = VK_RIGHT + 256;
+		mapping["F1"] = VK_F1 + 256;
+		mapping["F2"] = VK_F2 + 256;
+		mapping["F3"] = VK_F3 + 256;
+		mapping["F4"] = VK_F4 + 256;
+		mapping["F5"] = VK_F5 + 256;
+		mapping["F6"] = VK_F6 + 256;
+		mapping["F7"] = VK_F7 + 256;
+		mapping["F8"] = VK_F8 + 256;
+		mapping["F9"] = VK_F9 + 256;
+		mapping["F10"] = VK_F10 + 256;
+		mapping["F11"] = VK_F11 + 256;
+		mapping["F12"] = VK_F12 + 256;
+		mapping["BACKSPACE"] = VK_BACK;
+		mapping["INSERT"] = VK_INSERT + 256;
+		mapping["DELETE"] = VK_DELETE;
+		mapping["HOME"] = VK_HOME + 256;
+		mapping["PAGE_UP"] = VK_PRIOR + 256;
+		mapping["PAGE_DOWN"] = VK_NEXT + 256;
+		mapping["END"] = VK_END + 256;
+		mapping["PRINT_SCREEN"] = VK_SNAPSHOT + 256;
+		mapping["SCREEN_LOCK"] = VK_SCROLL + 256;
+		mapping["PAUSE"] = VK_PAUSE + 256;
+		mapping["NUM_LOCK"] = VK_NUMLOCK + 256;
+		mapping["NUM_ENTER"] = VK_RETURN;
+		mapping["NUM_INSERT"] = VK_INSERT;
+		mapping["WINKEY"] = VK_LWIN + 256;
+		mapping["FN"] = 0;
+		mapping["ESC"] = VK_ESCAPE;
+
+		keyboard.mapKeys(mapping);
 	}
 
 	~WindowsWindow() {
@@ -276,6 +368,6 @@ public:
 	}
 };
 
-std::map<HWND, WindowsWindow> WindowsWindow::eventMap;
+std::map<HWND, WindowsWindow *> WindowsWindow::eventMap;
 
 #endif

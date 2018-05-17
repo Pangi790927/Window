@@ -2,7 +2,7 @@
 #define KEYBOARD_H
 
 #include <map>
-#include "Util.h"
+#include "WindowUtil.h"
 
 struct KeyEvent {
 	int key;
@@ -18,19 +18,23 @@ public:
 	const static int MAX_KEY_CODE = 65536;
 
 	int keyState[MAX_KEY_CODE];
+	int onceKeyState[MAX_KEY_CODE];
 	std::map<std::string, int> currentKeyMap;
 
 	Keyboard() {
 		for (int i = 0; i < MAX_KEY_CODE; ++i) {
 			keyState[i] = 0;
+			onceKeyState[i] = false;
 		}
 	}
 
 	void registerEvent (int key, int press) {
 		if (press)
 			keyState[key] = true;
-		else
+		else {
 			keyState[key] = false;
+			onceKeyState[key] = false;
+		}
 		Util::StaticQueue <KeyEvent, QUE_SIZE>::insert(KeyEvent(key, press));
 	}
 
@@ -38,6 +42,18 @@ public:
 		if (key < 0 || key >= MAX_KEY_CODE)
 			return false;
 		return keyState[key];
+	}
+
+	int getOnceKeyState (int key) {
+		if (!onceKeyState[key] && keyState[key]) {
+			onceKeyState[key] = true;
+			return true;
+		}
+		else {
+			if (!keyState[key])
+				onceKeyState[key] = false;
+			return false;
+		}
 	}
 
 	KeyEvent popEvent() {

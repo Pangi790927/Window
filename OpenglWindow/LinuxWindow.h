@@ -230,19 +230,19 @@ public:
 	void updateMouse (const XEvent& event) {
 		if (event.type == ButtonPress) {
 			if (event.xbutton.button == Button1)
-				mouse.lmb = true;
+				mouse.updateLmb(true);
 			if (event.xbutton.button == Button2)
-				mouse.mmb = true;
+				mouse.updateMmb(true);
 			if (event.xbutton.button == Button3)
-				mouse.rmb = true;
+				mouse.updateRmb(true);
 		}
 		else if (event.type == ButtonRelease) {
 			if (event.xbutton.button == Button1)
-				mouse.lmb = false;
+				mouse.updateLmb(false);
 			if (event.xbutton.button == Button2)
-				mouse.mmb = false;
+				mouse.updateMmb(false);
 			if (event.xbutton.button == Button3)
-				mouse.rmb = false;
+				mouse.updateRmb(false);
 		}
 		else if (event.type == MotionNotify) {
 			mouse.updateXY(event.xmotion.x, event.xmotion.y);

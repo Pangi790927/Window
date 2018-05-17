@@ -1,37 +1,39 @@
 #include <iostream>
-#include "LinuxWindow.h"
+#include "OpenglWindow.h"
 
 int main(int argc, char const *argv[])
 {
 	int width = 600;
 	int height = 600;
 
-	LinuxWindow parrent(width, height, "parrent");
-	LinuxWindow window(width, height, "child", parrent.window);
+	OpenglWindow parrent(width, height, "parrent");
+	OpenglWindow child(width, height, "child", 8, parrent.window);
 
 	while (parrent.active) {
 		static float x = 0;
 		static float y = 0;
-
-		if (window.handleInput())
-			if (window.keyboard.getKeyState(window.keyboard.ESC))
-				window.requestClose();
 		
 		if (parrent.handleInput()) {
 			if (parrent.keyboard.getKeyState(parrent.keyboard.ESC))
 				parrent.requestClose();
+			while (!parrent.keyboard.queEmpty())
+				std::cout << parrent.keyboard.getName(parrent.keyboard.popEvent().key);
 			x = -(1.0f - parrent.mouse.x / (float)parrent.width * 2);
 			y = 1.0f - parrent.mouse.y / (float)parrent.height * 2;
 		}
-		
-		window.focus();
+
+		if (child.handleInput())
+			if (child.keyboard.getKeyState(child.keyboard.ESC))
+				child.requestClose();
+
+		child.focus();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glBegin(GL_LINES);
 			glColor3f(0, 1, 0);
 			glVertex2f(-1, -1);
 			glVertex2f(x, y);
 		glEnd();
-		window.swapBuffers();
+		child.swapBuffers();
 		
 		parrent.focus();
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
