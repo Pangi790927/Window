@@ -41,7 +41,7 @@ public:
 	int msaa;
 
 	LinuxWindow (int width, int height,
-			std::string name = "name", int msaa = 8, Window parrent = -1)
+			std::string name = "name", int msaa = 8, Window parrent = 0)
 	: width(width), height(height), name(name), msaa(msaa)
 	{
 		connectDisplay();
@@ -69,7 +69,7 @@ public:
 	}
 
 	void setParrent (Window parrent) {
-		if (parrent != -1) {
+		if (parrent != 0) {
 			parrentWindow = parrent;
 		}
 		else {
