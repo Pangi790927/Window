@@ -7,6 +7,7 @@ int main(int argc, char const *argv[])
 	int height = 300;
 
 	OpenglWindow parrent(width, height, "parrent");
+	OpenglWindow child(width, height, "child");
 
 	std::cout << parrent.toString() << std::endl;
 	std::cout << child.toString() << std::endl;
