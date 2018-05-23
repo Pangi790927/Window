@@ -13,6 +13,7 @@ public:
 	WNDCLASSEX wcex;
 	HINSTANCE hInstance;
 	HWND window;
+	HWND parrent;
 	HDC  hDC;
 	HGLRC hRC;
 	DWORD dwExStyle;
@@ -39,7 +40,7 @@ public:
 
 	WindowsWindow (int width, int height, std::string name,
 			int msaa = 8, HWND parrent = 0)
-	: width(width), height(height), name(name), msaa(msaa)
+	: width(width), height(height), name(name), msaa(msaa), parrent(parrent)
 	{
 		getHInstance();
 		registerClass();
@@ -361,6 +362,21 @@ public:
 		mapping["ESC"] = VK_ESCAPE;
 
 		keyboard.mapKeys(mapping);
+	}
+
+	std::string toString() {
+		std::stringstream ss;
+		ss << "name: " << name << std::endl;
+		ss << "coord[w;h;x;y]: " << width << " " << height << " "
+				<< x << " " << y << std::endl;
+		ss << "hDC: " << hDC << std::endl;
+		ss << "hRC: " << hRC << std::endl;
+		ss << "window: " << window << std::endl;
+		ss << "parrent: " << parrent << std::endl;
+		ss << "status[active; close; cursor; focus]: " << active << " "
+				<< closePending << " " << cursorHidden << " "
+				<< focusIn << std::endl;
+		return ss.str();
 	}
 
 	~WindowsWindow() {

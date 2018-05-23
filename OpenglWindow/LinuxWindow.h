@@ -5,6 +5,7 @@
 #include "Mouse.h"
 
 #include <cstring>
+#include <sstream>
 #include <GL/glx.h>
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
@@ -137,17 +138,17 @@ public:
 				ButtonReleaseMask | PointerMotionMask | FocusChangeMask;
 
 		window = XCreateWindow(
-			display, 
-			parrentWindow, 
-			0, 
-			0, 
-			width, 
-			height, 
-			0, 
-			visualInfo->depth, 
-			InputOutput, 
-			visualInfo->visual, 
-			CWColormap | CWEventMask, 
+			display,
+			parrentWindow,
+			0,
+			0,
+			width,
+			height,
+			0,
+			visualInfo->depth,
+			InputOutput,
+			visualInfo->visual,
+			CWColormap | CWEventMask,
 			&windowAttributes
 		);
 	}
@@ -308,7 +309,7 @@ public:
 					focusIn = false;
 			}
 			else if (ClientMessage && event.xclient.data.l[0] == wm_delete_window) {
-				close();
+				closePending = true;
 			}
 		}
 
@@ -376,6 +377,21 @@ public:
 		mapping["ESC"] = XK_Escape;
 
 		keyboard.mapKeys(mapping);
+	}
+
+	std::string toString() {
+		std::stringstream ss;
+		ss << "name: " << name << std::endl;
+		ss << "coord[w;h;x;y]: " << width << " " << height << " "
+				<< x << " " << y << std::endl;
+		ss << "display: " << display << std::endl;
+		ss << "glContext: " << glContext << std::endl;
+		ss << "window: " << window << std::endl;
+		ss << "parrent: " << parrentWindow << std::endl;
+		ss << "status[active; close; cursor; focus]: " << active << " "
+				<< closePending << " " << cursorHidden << " "
+				<< focusIn << std::endl;
+		return ss.str();
 	}
 
 	~LinuxWindow() {

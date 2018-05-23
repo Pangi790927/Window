@@ -14,6 +14,7 @@
 		swapBuffers();		// swap the drawing buffers
 		handleInput();		// remembers input pressed,
 							// returns true if event occured
+		toString()			// returns a string that describes the window 
 */
 #include "Options.h"
 #if defined(__linux__)
