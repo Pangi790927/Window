@@ -3,9 +3,9 @@
 
 #include "Keyboard.h"
 #include "Mouse.h"
-
 #include <cstring>
 #include <sstream>
+#include <GL/glew.h>
 #include <GL/glx.h>
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
