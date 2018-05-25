@@ -21,12 +21,25 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 
+namespace GlewInitiator
+{
+	class GlewInit {
+	public:
+		GlewInit() {
+			glewInit();
+		}
+	};
+
+	GlewInit glewInitiator;
+}
+
 #include "Options.h"
 #if defined(__linux__)
 	#include "LinuxWindow.h"
 	using RawWindow = LinuxWindow;
 #elif defined(_WIN32)
 	#include "WindowsWindow.h"
+	std::map<HWND, WindowsWindow *> WindowsWindow::eventMap;
 	using RawWindow = WindowsWindow;
 #endif
 

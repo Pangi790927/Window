@@ -385,6 +385,4 @@ public:
 	}
 };
 
-std::map<HWND, WindowsWindow *> WindowsWindow::eventMap;
-
 #endif
