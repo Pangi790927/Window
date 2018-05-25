@@ -21,18 +21,6 @@
 #include <GL/gl.h>
 #include <GL/glu.h>
 
-namespace GlewInitiator
-{
-	class GlewInit {
-	public:
-		GlewInit() {
-			glewInit();
-		}
-	};
-
-	GlewInit glewInitiator;
-}
-
 #include "Options.h"
 #if defined(__linux__)
 	#include "LinuxWindow.h"
@@ -53,6 +41,14 @@ public:
 	: RawWindow(width, height, name, msaa, parrent), options(options)
 	{
 		setVSync(options["vSync"]);
+		initGlew();
+	}
+
+	void initGlew() {
+		GLenum err = glewInit();
+		if (err != GLEW_OK)
+			throw std::runtime_error(std::string("glew error: ") +
+					(char *)glewGetErrorString(err));
 	}
 };
 
