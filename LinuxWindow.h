@@ -193,7 +193,7 @@ public:
 
 			Pixmap blank = XCreateBitmapFromData (display, window, &data, 1, 1);
 			if (blank == None)
-				std::cout << "out of memory" << std::endl;
+				throw std::runtime_error("out of memory");
 			
 			Cursor cursor = XCreatePixmapCursor(display, blank, blank,
 					&dummy, &dummy, 0, 0);
