@@ -16,6 +16,11 @@
 							// returns true if event occured
 		toString()			// returns a string that describes the window 
 */
+
+#include <GL/glew.h>
+#include <GL/gl.h>
+#include <GL/glu.h>
+
 #include "Options.h"
 #if defined(__linux__)
 	#include "LinuxWindow.h"
