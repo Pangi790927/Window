@@ -1,4 +1,4 @@
-#ifndef WINDOWS_WINDOW_H
+r#ifndef WINDOWS_WINDOW_H
 #define WINDOWS_WINDOW_H
 
 #include "Keyboard.h"
@@ -13,7 +13,7 @@
 class WindowsWindow {
 public:
 	WNDCLASSEX wcex;
-	HINSTANCE hInstance;
+	HINSTANCE hInstance;r
 	HWND window;
 	HWND parrent;
 	HDC  hDC;
@@ -226,7 +226,7 @@ public:
 	}
 
 	template <typename FuncType>
-	void setRezise (FuncType&& func) {
+	void setResise (FuncType&& func) {
 		onResize = func;
 	}
 
