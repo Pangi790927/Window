@@ -2,7 +2,7 @@
 #define KEYBOARD_H
 
 #include <map>
-#include "WindowUtil.h"
+#include "Util.h"
 
 struct KeyEvent {
 	int key;

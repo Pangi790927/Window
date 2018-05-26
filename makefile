@@ -7,8 +7,10 @@ else
 	CXX_FLAGS = -lGLEW -lGLU -lGL -lX11 -o test
 endif
 
+CXX_INCLUDES = -I../Misc
+
 all:
-	$(CXX) -std=c++11 main.cpp $(CXX_FLAGS)
+	$(CXX) -std=c++11 main.cpp $(CXX_FLAGS) $(CXX_INCLUDES)
 	./test
 
 clean:
