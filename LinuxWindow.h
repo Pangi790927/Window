@@ -5,6 +5,7 @@
 #include "Mouse.h"
 #include <cstring>
 #include <sstream>
+#include <functional>
 #include <GL/glew.h>
 #include <GL/glx.h>
 #include <X11/Xlib.h>
@@ -40,6 +41,10 @@ public:
 	bool focusIn;
 
 	int msaa;
+	std::function<void(int, int, int, int)> onResize = [&](int x, int y, int w, int h) {
+		focus();
+		glViewport(x, y, w, h);
+	};
 
 	LinuxWindow (int width, int height,
 			std::string name = "name", int msaa = 8, Window parrent = 0)
@@ -256,10 +261,15 @@ public:
 		glXMakeCurrent(display, window, glContext);
 	}
 
+	template <typename FuncType>
+	void setRezise (FuncType&& func) {
+		onResize = func;
+	}
+
 	void resize() {
 		if (!active)
 			return;
-		// TO DO
+		onResize(0, 0, width, height);
 	}
 
 	void setVSync (bool sync) {
@@ -317,7 +327,6 @@ public:
 			if (needRedraw) {
 				width = eventWindowAttributes.width; 
 				height = eventWindowAttributes.height;
-
 				setWindowPosition();
 				resize();
 			}

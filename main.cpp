@@ -20,7 +20,7 @@ int main(int argc, char const *argv[])
 			if (parrent.keyboard.getKeyState(parrent.keyboard.ESC))
 				parrent.requestClose();
 			while (!parrent.keyboard.queEmpty())
-				std::cout << parrent.keyboard.getName(parrent.keyboard.popEvent().key);
+				std::cout << parrent.keyboard.getName(parrent.keyboard.popEvent().key) << std::endl;
 			x = -(1.0f - parrent.mouse.x / (float)parrent.width * 2);
 			y = 1.0f - parrent.mouse.y / (float)parrent.height * 2;
 		}

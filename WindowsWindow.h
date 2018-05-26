@@ -6,6 +6,7 @@
 #include <GL/glew.h>
 #include <GL/gl.h>
 #include <GL/glu.h>
+#include <functional>
 #include <windows.h>
 #include <windowsx.h>
 
@@ -38,6 +39,10 @@ public:
 	bool needRedraw = false;
 
 	int msaa;	// not used inside the windows window
+	std::function<void(int, int, int, int)> onResize = [&](int x, int y, int w, int h) {
+		focus();
+		glViewport(x, y, w, h);
+	};
 
 	WindowsWindow (int width, int height, std::string name,
 			int msaa = 8, HWND parrent = 0)
@@ -220,6 +225,11 @@ public:
 		ShowWindow(window, nCmdShow);
 	}
 
+	template <typename FuncType>
+	void setRezise (FuncType&& func) {
+		onResize = func;
+	}
+
 	void resize() {
 		if (!active)
 			return;
@@ -227,7 +237,7 @@ public:
 			close();
 			return;
 		}
-		// TO DO;
+		onResize(0, 0, width, height);
 	}
 
 	void focus() {
