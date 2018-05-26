@@ -19,23 +19,34 @@ public:
 
 	int keyState[MAX_KEY_CODE];
 	int onceKeyState[MAX_KEY_CODE];
+	int keyNoCase[MAX_KEY_CODE];
 	std::map<std::string, int> currentKeyMap;
 
 	Keyboard() {
 		for (int i = 0; i < MAX_KEY_CODE; ++i) {
 			keyState[i] = 0;
+			keyNoCase[i] = 0;
 			onceKeyState[i] = false;
 		}
 	}
 
 	void registerEvent (int key, int press) {
-		if (press)
+		if (press) {
 			keyState[key] = true;
+			keyNoCase[std::tolower(key)] = true;
+		}
 		else {
 			keyState[key] = false;
+			keyNoCase[std::tolower(key)] = false;
 			onceKeyState[key] = false;
 		}
 		Util::StaticQueue <KeyEvent, QUE_SIZE>::insert(KeyEvent(key, press));
+	}
+
+	int getStateNoCase (int key) {
+		if (key < 0 || key >= MAX_KEY_CODE)
+			return false;
+		return keyNoCase[std::tolower(key)];
 	}
 
 	int getKeyState (int key) {
