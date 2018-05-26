@@ -29,6 +29,11 @@ public:
 		this->y = y;
 	}
 
+	void update() {
+		lastX = this->x;
+		lastY = this->y;
+	}
+
 	void updateMmbPos (float pos) {
 		lastMmbPos = mmbPos;
 		mmbPos = pos;

@@ -1,4 +1,4 @@
-r#ifndef WINDOWS_WINDOW_H
+#ifndef WINDOWS_WINDOW_H
 #define WINDOWS_WINDOW_H
 
 #include "Keyboard.h"
@@ -13,7 +13,7 @@ r#ifndef WINDOWS_WINDOW_H
 class WindowsWindow {
 public:
 	WNDCLASSEX wcex;
-	HINSTANCE hInstance;r
+	HINSTANCE hInstance;
 	HWND window;
 	HWND parrent;
 	HDC  hDC;
