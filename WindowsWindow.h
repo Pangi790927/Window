@@ -226,7 +226,7 @@ public:
 	}
 
 	template <typename FuncType>
-	void setResise (FuncType&& func) {
+	void setResize (FuncType&& func) {
 		onResize = func;
 	}
 
