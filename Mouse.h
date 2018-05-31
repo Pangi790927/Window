@@ -93,7 +93,7 @@ public:
 		}
 	}
 
-	bool getOnceRmb(bool lmb) {
+	bool getOnceRmb() {
 		if (rmb && !onceRmb) {
 			onceRmb = true;
 			return true;
