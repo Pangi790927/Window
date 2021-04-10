@@ -45,9 +45,13 @@ public:
 	};
 
 	WindowsWindow (int width, int height, std::string name,
-			int msaa = 8, HWND parrent = 0)
+			int msaa = 8, HWND parrent = 0, bool debug)
 	: width(width), height(height), name(name), msaa(msaa), parrent(parrent)
 	{
+		if (debug) {
+			printf("Debug Opengl window is not implemented\n");
+			exit(-1);
+		}
 		getHInstance();
 		registerClass();
 		createWindow(parrent);

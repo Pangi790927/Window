@@ -11,6 +11,49 @@
 #include <X11/Xlib.h>
 #include <X11/XKBlib.h>
 
+#define GLX_CONTEXT_MAJOR_VERSION_ARB       0x2091
+#define GLX_CONTEXT_MINOR_VERSION_ARB       0x2092
+
+// Helper to check for extension string presence.  Adapted from:
+//   http://www.opengl.org/resources/features/OGLextensions/
+static bool isExtensionSupported(const char *extList, const char *extension)
+{
+	const char *start;
+	const char *where, *terminator;
+
+	/* Extension names should not have spaces. */
+	where = strchr(extension, ' ');
+	if (where || *extension == '\0')
+		return false;
+
+	/* It takes a bit of care to be fool-proof about parsing the
+	   OpenGL extensions string. Don't be fooled by sub-strings,
+	   etc. */
+	for (start=extList;;) {
+		where = strstr(start, extension);
+
+		if (!where)
+			break;
+
+		terminator = where + strlen(extension);
+
+		if ( where == start || *(where - 1) == ' ' )
+			if ( *terminator == ' ' || *terminator == '\0' )
+				return true;
+
+		start = terminator;
+	}
+
+	return false;
+}
+
+static bool ctxErrorOccurred = false;
+static int ctxErrorHandler( Display *dpy, XErrorEvent *ev )
+{
+	ctxErrorOccurred = true;
+	return 0;
+}
+
 // 2 x TO_DO
 class LinuxWindow {
 public:
@@ -39,6 +82,7 @@ public:
 	bool closePending = false;
 	bool cursorHidden = false;
 	bool focusIn;
+	bool debug;
 
 	int msaa;
 	std::function<void(int, int, int, int)> onResize = [&](int x, int y, int w, int h) {
@@ -47,43 +91,15 @@ public:
 	};
 
 	LinuxWindow (int width, int height,
-			std::string name = "name", int msaa = 8, Window parrent = 0)
-	: width(width), height(height), name(name), msaa(msaa)
+			std::string name = "name", int msaa = 8, Window parrent = 0,
+			bool debug = true)
+	: width(width), height(height), name(name), msaa(msaa), debug(debug)
 	{
-		connectDisplay();
-		setParrent(parrent);
-		setVisuals();
-		createColorMap();
-		createWindow();
-		changeName(name);
-		createContext();
-		setCloseProtocol();
-		initKeyboard();
-
-		mapWindow();
-		active = true;
-	}
-
-	LinuxWindow (const LinuxWindow& other) = delete;
-	LinuxWindow (const LinuxWindow&& other) = delete;
-	LinuxWindow& operator = (const LinuxWindow& other) = delete;
-	LinuxWindow& operator = (const LinuxWindow&& other) = delete;
-
-	void connectDisplay() {
 		if ((display = XOpenDisplay(NULL)) == NULL)
 			throw std::runtime_error("Can't connect to X server");
-	}
 
-	void setParrent (Window parrent) {
-		if (parrent != 0) {
-			parrentWindow = parrent;
-		}
-		else {
-			parrentWindow = DefaultRootWindow(display);
-		}
-	}
+		parrentWindow = parrent ? parrent : DefaultRootWindow(display);
 
-	void setVisuals() {
 		// should be checked, I couldn't find the right manual for glx
 		static const int visualAttr[] =
 		{
@@ -103,15 +119,22 @@ public:
 			None					
 		};
 
+		 // FBConfigs were added in GLX version 1.3.
+  		int glx_major, glx_minor;
+		if (!glXQueryVersion(display, &glx_major, &glx_minor) ||
+				((glx_major == 1) && (glx_minor < 3)) || (glx_major < 1))
+			throw std::runtime_error("Invalid GLX version");
+
 		int attribs[100];
 		memcpy(attribs, visualAttr, sizeof(visualAttr));
 
-		GLXFBConfig fbconfig = 0;
+
 		int fbcount;
-
+		GLXFBConfig fbconfig = 0;
 		GLXFBConfig *fbc = glXChooseFBConfig(display,
-				0/*screen */, attribs, &fbcount);
+				DefaultScreen(display), attribs, &fbcount);
 
+		/* TO DO: Find out what those are and how to use them better */
 		if (fbc) {
 			if (fbcount >= 1)
 				fbconfig = fbc[0];
@@ -123,20 +146,9 @@ public:
 
 		if ((visualInfo = glXGetVisualFromFBConfig(display, fbconfig)) == NULL)
 			throw std::runtime_error("No visual chosen");
-	}
-
-	void createColorMap() {
+		
 		colormap = XCreateColormap(display, parrentWindow,
 				visualInfo->visual, AllocNone);
-	}
-
-	void setCloseProtocol() {
-		wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
-		Atom protocols[] = {wm_delete_window};
-		XSetWMProtocols(display, window, protocols, 1);
-	}
-
-	void createWindow() {
 		windowAttributes.colormap = colormap; 
 		windowAttributes.event_mask =
 				ExposureMask | KeyPressMask | KeyReleaseMask | ButtonPressMask |
@@ -156,16 +168,107 @@ public:
 			CWColormap | CWEventMask,
 			&windowAttributes
 		);
+
+		if (!window)
+			throw std::runtime_error("Failed to create window.\n");
+
+		changeName(name);
+		XMapWindow(display, window);
+
+		const char *glxExts = glXQueryExtensionsString(display,
+				DefaultScreen(display));
+
+		using glXCreateContextAttribsARBProc = GLXContext (*)(Display*,
+				GLXFBConfig, GLXContext, Bool, const int*);
+		glXCreateContextAttribsARBProc glXCreateContextAttribsARB = 0;
+		glXCreateContextAttribsARB = (glXCreateContextAttribsARBProc)
+				glXGetProcAddressARB(
+				(const GLubyte *)"glXCreateContextAttribsARB");
+
+		// TO DO
+		// Install an X error handler so the application won't exit if GL 3.0
+		// context allocation fails.
+		//
+		// Note this error handler is global.  All display connections in all threads
+		// of a process use the same error handler, so be sure to guard against other
+		// threads issuing X commands while this code is running.
+		ctxErrorOccurred = false;
+		int (*oldHandler)(Display*, XErrorEvent*) =
+				XSetErrorHandler(&ctxErrorHandler);
+
+		// Check for the GLX_ARB_create_context extension string and the function.
+		// If either is not present, use GLX 1.3 context creation method.
+		if (!isExtensionSupported(glxExts, "GLX_ARB_create_context") ||
+				!glXCreateContextAttribsARB)
+		{
+			printf("glXCreateContextAttribsARB() not found"
+					" ... using old-style GLX context\n");
+			glContext = glXCreateNewContext(display, fbconfig,
+					GLX_RGBA_TYPE, 0, true);
+		}
+		else {
+			int context_attribs[] =
+			{
+				GLX_CONTEXT_MAJOR_VERSION_ARB, 3,
+				GLX_CONTEXT_MINOR_VERSION_ARB, 0,
+				debug ? GLX_CONTEXT_FLAGS_ARB : 0, debug ? GLX_CONTEXT_DEBUG_BIT_ARB : 0,
+				//GLX_CONTEXT_FLAGS_ARB        , GLX_CONTEXT_FORWARD_COMPATIBLE_BIT_ARB,
+				None
+			};
+
+			glContext = glXCreateContextAttribsARB(display, fbconfig, 0,
+					true, context_attribs);
+
+			// Sync to ensure any errors generated are processed.
+			XSync(display, false);
+			if (!(!ctxErrorOccurred && glContext))
+			{
+				// Couldn't create GL 3.0 context.  Fall back to old-style 2.x context.
+				// When a context version below 3.0 is requested, implementations will
+				// return the newest context version compatible with OpenGL versions less
+				// than version 3.0.
+				// GLX_CONTEXT_MAJOR_VERSION_ARB = 1
+				context_attribs[1] = 1;
+				// GLX_CONTEXT_MINOR_VERSION_ARB = 0
+				context_attribs[3] = 0;
+
+				ctxErrorOccurred = false;
+
+				printf( "Failed to create GL 3.0 context"
+						" ... using old-style GLX context\n");
+				glContext = glXCreateContextAttribsARB(display, fbconfig, 0, 
+						true, context_attribs);
+			}
+		}
+
+		// Sync to ensure any errors generated are processed.
+		XSync( display, False );
+
+		// Restore the original error handler
+		XSetErrorHandler( oldHandler );
+
+		if (ctxErrorOccurred || !glContext )
+			throw std::runtime_error("Failed to create an OpenGL context\n");
+
+		glXMakeCurrent(display, window, glContext);
+
+		wm_delete_window = XInternAtom(display, "WM_DELETE_WINDOW", False);
+		Atom protocols[] = {wm_delete_window};
+		XSetWMProtocols(display, window, protocols, 1);
+		
+		initKeyboard();
+
+		active = true;
 	}
+
+	LinuxWindow (const LinuxWindow& other) = delete;
+	LinuxWindow (const LinuxWindow&& other) = delete;
+	LinuxWindow& operator = (const LinuxWindow& other) = delete;
+	LinuxWindow& operator = (const LinuxWindow&& other) = delete;
 
 	void changeName (std::string name) {
 		this->name = name; 
 		XStoreName(display, window, name.c_str());
-	}
-
-	void createContext() {
-		glContext = glXCreateContext(display, visualInfo, NULL, GL_TRUE);
-		glXMakeCurrent(display, window, glContext);
 	}
 
 	void setWindowPosition() {
@@ -178,10 +281,6 @@ public:
 		
 		x = oldX - xwa.x;
 		y = oldY - xwa.y;
-	}
-
-	void mapWindow() {
-		XMapWindow(display, window);
 	}
 
 	void moveMouseTo (int dx, int dy) {

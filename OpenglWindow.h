@@ -38,8 +38,8 @@ public:
 
 	OpenglWindow (int width, int height, std::string name = "name",
 			int msaa = 8, decltype(RawWindow::window) parrent = 0,
-			Options options = Options())
-	: RawWindow(width, height, name, msaa, parrent), options(options)
+			Options options = Options(), bool debug = true)
+	: RawWindow(width, height, name, msaa, parrent, debug), options(options)
 	{
 		setVSync(options["vSync"]);
 		initGlew();
